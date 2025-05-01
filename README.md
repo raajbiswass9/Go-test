@@ -176,7 +176,15 @@ func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
 	assert.Equal(t, []string{"ISSUE-123"}, result)
 }
 
+.........
 
+
+
+monkey.Patch(models.FindJiraIssues, func(jiraURL string, filters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) ([]models.JiraIssue, error) {
+	return []models.JiraIssue{
+		{Key: "ISSUE-123"}, // Fill only required fields
+	}, nil
+})
 
 
 
