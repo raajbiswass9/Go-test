@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"bou.ke/monkey"
 	"feedback/models"
-	"time" // Add this if you're using time.Time in your struct
+	"time"
 )
 
 func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
-	// Mock the validateAndSanitizeParams function (note exact case)
+	// Mock the validateAndSanitizeParams function
 	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
 		return "https://test.jira.com", nil
 	})
@@ -27,12 +27,12 @@ func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
 		}, nil
 	})
 
-	// Mock the models.FindJiraIssues function with correct struct fields
+	// Mock the models.FindJiraIssues function with proper JiraID type
 	monkey.Patch(models.FindJiraIssues, func(jiraURL string, inputFilters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) ([]models.JiraIssue, error) {
 		assert.Equal(t, []string{"TEST-123", "TEST-456"}, inputFilters["issueID"])
 		return []models.JiraIssue{
-			{JiraID: "TEST-123"}, // Using JiraID instead of ID
-			{JiraID: "TEST-456"}, // Using JiraID instead of ID
+			{JiraID: models.JiraID("TEST-123")}, // Properly type-converted
+			{JiraID: models.JiraID("TEST-456")}, // Properly type-converted
 		}, nil
 	})
 
@@ -50,7 +50,7 @@ func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
 		},
 	}
 
-	// Execute the query (make sure JiraIssuesQuery is exported)
+	// Execute the query
 	result, err := JiraIssuesQuery.Resolve(params)
 
 	// Verify results
@@ -59,6 +59,6 @@ func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
 	issues, ok := result.([]models.JiraIssue)
 	assert.True(t, ok)
 	assert.Len(t, issues, 2)
-	assert.Equal(t, "TEST-123", issues[0].JiraID) // Using JiraID instead of ID
-	assert.Equal(t, "TEST-456", issues[1].JiraID) // Using JiraID instead of ID
+	assert.Equal(t, models.JiraID("TEST-123"), issues[0].JiraID) // Type-converted comparison
+	assert.Equal(t, models.JiraID("TEST-456"), issues[1].JiraID) // Type-converted comparison
 }
