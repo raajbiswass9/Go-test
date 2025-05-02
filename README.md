@@ -1,278 +1,63 @@
-package yourpackage
-
-import (
-	"errors"
-	"testing"
-
-	"github.com/bouk/monkey"
-	"github.com/graphql-go/graphql"
-	"github.com/stretchr/testify/assert"
-	"yourmodule/models"
-)
-
-func TestJiraIssuesQuery_Success(t *testing.T) {
-	// Patch validateAndSanitizeParams
-	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
-		return "mocked-jira-url", nil
-	})
-	defer monkey.Unpatch(validateAndSanitizeParams)
-
-
-
-
-
-
-
-	// Patch extractParams
-	monkey.Patch(extractParams, func(args interface{}) (string, string, int, int, error) {
-		return "searchText", "asc", 1, 10, nil
-	})
-	defer monkey.Unpatch(extractParams)
-
-	// Patch decodeInputCategories
-	monkey.Patch(decodeInputCategories, func(params graphql.ResolveParams, categories []string) (map[string][]string, error) {
-		return map[string][]string{"projectKeyIn": {"PROJ1"}}, nil
-	})
-	defer monkey.Unpatch(decodeInputCategories)
-
-	// Patch models.FindJiraIssues
-	monkey.Patch(models.FindJiraIssues, func(jiraURL string, filters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) (interface{}, error) {
-		return []string{"ISSUE-1", "ISSUE-2"}, nil
-	})
-	defer monkey.Unpatch(models.FindJiraIssues)
-
-	params := graphql.ResolveParams{
-		Args: map[string]interface{}{
-			"projectKeyIn": []string{"PROJ1"},
-		},
-	}
-
-	result, err := JiraIssuesQuery.Resolve(params)
-	assert.NoError(t, err)
-	assert.Equal(t, []string{"ISSUE-1", "ISSUE-2"}, result)
-}
-
-func TestJiraIssuesQuery_ValidateFails(t *testing.T) {
-	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
-		return "", errors.New("user not valid")
-	})
-	defer monkey.Unpatch(validateAndSanitizeParams)
-
-	params := graphql.ResolveParams{}
-	result, err := JiraIssuesQuery.Resolve(params)
-	assert.Error(t, err)
-	assert.Nil(t, result)
-}
-
-func TestJiraIssuesQuery_DecodeInputCategoriesFails(t *testing.T) {
-	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
-		return "mocked-url", nil
-	})
-	defer monkey.Unpatch(validateAndSanitizeParams)
-
-	monkey.Patch(extractParams, func(args interface{}) (string, string, int, int, error) {
-		return "searchText", "asc", 1, 10, nil
-	})
-	defer monkey.Unpatch(extractParams)
-
-	monkey.Patch(decodeInputCategories, func(params graphql.ResolveParams, categories []string) (map[string][]string, error) {
-		return nil, errors.New("decode error")
-	})
-	defer monkey.Unpatch(decodeInputCategories)
-
-	params := graphql.ResolveParams{}
-	result, err := JiraIssuesQuery.Resolve(params)
-	assert.Error(t, err)
-	assert.Nil(t, result)
-}
-
-
-
-
-
-..........
-
-func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
-	// Patch validateAndSanitizeParams
-	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
-		return "mocked-jira-url", nil
-	})
-	defer monkey.Unpatch(validateAndSanitizeParams)
-
-	// Patch extractParams
-	monkey.Patch(extractParams, func(args interface{}) (string, string, int, int, error) {
-		return "", "", 1, 10, nil
-	})
-	defer monkey.Unpatch(extractParams)
-
-	// Patch decodeInputCategories
-	monkey.Patch(decodeInputCategories, func(params graphql.ResolveParams, categories []string) (map[string][]string, error) {
-		// Validate issueID presence
-		assert.Contains(t, params.Args, "issueID")
-		assert.Equal(t, []string{"ISSUE-123"}, params.Args["issueID"])
-
-		return map[string][]string{
-			"issueID": {"ISSUE-123"},
-		}, nil
-	})
-	defer monkey.Unpatch(decodeInputCategories)
-
-	// Patch FindJiraIssues
-	monkey.Patch(models.FindJiraIssues, func(jiraURL string, filters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) (interface{}, error) {
-		assert.Equal(t, "mocked-jira-url", jiraURL)
-		assert.Contains(t, filters, "issueID")
-		assert.Equal(t, []string{"ISSUE-123"}, filters["issueID"])
-		return []string{"ISSUE-123"}, nil
-	})
-	defer monkey.Unpatch(models.FindJiraIssues)
-
-	params := graphql.ResolveParams{
-		Args: map[string]interface{}{
-			"issueID": []string{"ISSUE-123"},
-		},
-	}
-
-	result, err := JiraIssuesQuery.Resolve(params)
-	assert.NoError(t, err)
-	assert.Equal(t, []string{"ISSUE-123"}, result)
-}
-
-/...............
-
-
-
-
-
-func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
-	// Patch validateAndSanitizeParams
-	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
-		return "mocked-jira-url", nil
-	})
-	defer monkey.Unpatch(validateAndSanitizeParams)
-
-	// Patch decodeInputCategories
-	monkey.Patch(decodeInputCategories, func(params graphql.ResolveParams, categories []string) (map[string][]string, error) {
-		return map[string][]string{
-			"issueID": {"ISSUE-123"},
-		}, nil
-	})
-	defer monkey.Unpatch(decodeInputCategories)
-
-	// Patch FindJiraIssues
-	monkey.Patch(models.FindJiraIssues, func(jiraURL string, filters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) (interface{}, error) {
-		assert.Equal(t, "mocked-jira-url", jiraURL)
-		assert.Contains(t, filters, "issueID")
-		assert.Equal(t, []string{"ISSUE-123"}, filters["issueID"])
-		return []string{"ISSUE-123"}, nil
-	})
-	defer monkey.Unpatch(models.FindJiraIssues)
-
-	params := graphql.ResolveParams{
-		Args: map[string]interface{}{
-			"issueID":    []string{"ISSUE-123"},
-			"pageNumber": 1,
-			"pageSize":   10,
-			"sortOrder":  "",
-			"searchText": "",
-		},
-	}
-
-	result, err := JiraIssuesQuery.Resolve(params)
-	assert.NoError(t, err)
-	assert.Equal(t, []string{"ISSUE-123"}, result)
-}
-
-.........
-
-
-
-monkey.Patch(models.FindJiraIssues, func(jiraURL string, filters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) ([]models.JiraIssue, error) {
-	return []models.JiraIssue{
-		{Key: "ISSUE-123"}, // Fill only required fields
-	}, nil
-})
-
-
-.........
-
-
-
-
-
-package yourpackage
+package query
 
 import (
 	"testing"
-	"errors"
-
-	"github.com/bouk/monkey"
 	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
-
-	"yourmodule/models" // replace with your actual module path
+	"bou.ke/monkey"
+	"feedback/models"
 )
 
 func TestJiraIssuesQuery_WithIssueID(t *testing.T) {
-	// Patch validateAndSanitizeParams
+	// Mock the validateAndSanitizeParams function
 	monkey.Patch(validateAndSanitizeParams, func(params graphql.ResolveParams) (string, error) {
-		return "mocked-jira-url", nil
+		return "https://test.jira.com", nil
 	})
-	defer monkey.Unpatch(validateAndSanitizeParams)
 
-	// Patch decodeInputCategories
-	monkey.Patch(decodeInputCategories, func(params graphql.ResolveParams, categories []string) (map[string][]string, error) {
+	// Mock the extractParams function
+	monkey.Patch(extractParams, func(args map[string]interface{}) (string, string, int, int, error) {
+		return "", "ASC", 1, 10, nil
+	})
+
+	// Mock the decodeInputCategories function
+	monkey.Patch(decodeInputCategories, func(params graphql.ResolveParams, inputCategories []string) (map[string][]string, error) {
 		return map[string][]string{
-			"issueID": {"ISSUE-123"},
+			"issueID": {"TEST-123", "TEST-456"},
 		}, nil
 	})
-	defer monkey.Unpatch(decodeInputCategories)
 
-	// Patch exported models.FindJiraIssues
-	monkey.Patch(models.FindJiraIssues, func(jiraURL string, filters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) ([]models.JiraIssue, error) {
-		assert.Equal(t, "mocked-jira-url", jiraURL)
-		assert.Contains(t, filters, "issueID")
-		assert.Equal(t, []string{"ISSUE-123"}, filters["issueID"])
-
+	// Mock the models.FindJiraIssues function
+	monkey.Patch(models.FindJiraIssues, func(jiraURL string, inputFilters map[string][]string, sortOrder, searchText string, pageNumber, pageSize int) ([]models.JiraIssue, error) {
+		assert.Equal(t, []string{"TEST-123", "TEST-456"}, inputFilters["issueID"])
 		return []models.JiraIssue{
-			{
-				ID:      "10001",
-				Key:     "ISSUE-123",
-				Summary: "Mocked Issue Summary",
-				Status:  "Open",
-			},
+			{ID: "TEST-123"},
+			{ID: "TEST-456"},
 		}, nil
 	})
-	defer monkey.Unpatch(models.FindJiraIssues)
 
+	// Clean up all monkey patches after test
+	defer monkey.UnpatchAll()
+
+	// Create test params with issueID
 	params := graphql.ResolveParams{
 		Args: map[string]interface{}{
-			"issueID":    []string{"ISSUE-123"},
+			"issueID":    []interface{}{"TEST-123", "TEST-456"},
+			"sortOrder":  "ASC",
 			"pageNumber": 1,
 			"pageSize":   10,
-			"sortOrder":  "",
-			"searchText": "",
+			"jiraURL":    "https://test.jira.com",
 		},
 	}
 
+	// Execute the query
 	result, err := JiraIssuesQuery.Resolve(params)
-	assert.NoError(t, err)
 
-	expected := []models.JiraIssue{
-		{
-			ID:      "10001",
-			Key:     "ISSUE-123",
-			Summary: "Mocked Issue Summary",
-			Status:  "Open",
-		},
-	}
-
-	assert.Equal(t, expected, result)
+	// Verify results
+	assert.Nil(t, err)
+	assert.NotNil(t, result)
+	issues, ok := result.([]models.JiraIssue)
+	assert.True(t, ok)
+	assert.Len(t, issues, 2)
+	assert.Equal(t, "TEST-123", issues[0].ID)
+	assert.Equal(t, "TEST-456", issues[1].ID)
 }
-
-
-
-
-
-
-
-
