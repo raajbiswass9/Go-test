@@ -54,7 +54,7 @@ func TestCitiJiraFeedbackMutation_Success(t *testing.T) {
 		return fmt.Sprintf("%s/browse/%s", baseURL, jiraID)
 	})
 
-	// Prepare input args
+	// Input Args
 	input := map[string]interface{}{
 		"title":          "Bug in app",
 		"description":    "App crashes on login",
@@ -71,16 +71,20 @@ func TestCitiJiraFeedbackMutation_Success(t *testing.T) {
 		"jiraURL": "",
 	}
 
-	// Execute mutation
+	// Execute GraphQL mutation
 	result, err := mutation.CitiJiraFeedbackMutation.Resolve(graphql.ResolveParams{
 		Args: args,
 	})
 
+	// Assertions
 	assert.NoError(t, err)
+	expected := models.JiraFeedbackResult{
+		JiraID:      "JIRA-123",
+		JiraURL:     "https://valid.atlassian.net/jira//browse/JIRA-123",
+		ActionTaken: "New Jira Ticket created for the feedback",
+	}
 
-	feedbackResult, ok := result.(models.JiraFeedbackResult)
-	assert.True(t, ok, "Result should be of type JiraFeedbackResult")
-	assert.Equal(t, "JIRA-123", feedbackResult.JiraID)
-	assert.Equal(t, "https://valid.atlassian.net/jira//browse/JIRA-123", feedbackResult.JiraURL)
-	assert.Equal(t, "New Jira Ticket created for the feedback", feedbackResult.ActionTaken)
+	actual, ok := result.(models.JiraFeedbackResult)
+	assert.True(t, ok, "Returned result must be JiraFeedbackResult")
+	assert.Equal(t, expected, actual)
 }
