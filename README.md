@@ -1,69 +1,61 @@
 func TestCitiJiraFeedbackMutation_Success(t *testing.T) {
-	defer monkey.UnpatchAll()
+    monkey.Patch(common.IsValidUser, func(params graphql.ResolveParams) bool {
+        return true
+    })
 
-	// Patch all dependencies
-	monkey.Patch(common.IsValidUser, func(_ graphql.ResolveParams) bool { return true })
-	monkey.Patch(common.Sanitize, func(input interface{}) (interface{}, error) { return input, nil })
-	monkey.Patch(common.IsInternalUser, func(_ graphql.ResolveParams) bool { return false })
-	monkey.Patch(common.GetUserName, func(_ graphql.ResolveParams) string { return "test-reporter" })
-	monkey.Patch(common.IsProjectKeyValid, func(_ string) bool { return true })
+    monkey.Patch(common.Sanitize, func(rawInput interface{}) (interface{}, error) {
+        return rawInput, nil
+    })
 
-	monkey.Patch(mutation.CreateJiraIssue, func(input models.GeneralFeedback, reporter string) *jira.Issue {
-		return &jira.Issue{
-			Key: "JIRA-123",
-		}
-	})
-	monkey.Patch(models.CreateJiraIssue, func(_ string, _ *jira.Issue) (string, error) {
-		return "JIRA-123", nil
-	})
-	monkey.Patch(models.GetJiraURL, func(baseURL string, jiraID string) string {
-		return baseURL + "browse/" + jiraID
-	})
+    monkey.Patch(common.IsJiraURLValid, func(jiraURL *string) bool {
+        if jiraURL != nil && *jiraURL == "" {
+            *jiraURL = "https://example.atlassian.net/"
+        }
+        return true
+    })
 
-	// 🔥 This is the important part
-	monkey.Patch(common.IsJiraURLValid, func(jiraURL *string) bool {
-		if jiraURL == nil {
-			t.Fatal("jiraURL is nil") // crash guard
-		}
-		if *jiraURL == "" {
-			*jiraURL = "https://example.atlassian.net/jira/"
-		}
-		return true
-	})
+    monkey.Patch(common.IsInternalUser, func(params graphql.ResolveParams) bool {
+        return false
+    })
 
-	// Test input args
-	args := map[string]interface{}{
-		"input": map[string]interface{}{
-			"title":         "Bug in login",
-			"description":   "Crash on login attempt",
-			"projectKey":    "PRJ",
-			"issueType":     "Bug",
-			"reporter":      "original-reporter",
-			"componentName": "Login",
-			"teamId":        "Team42",
-			"labels":        []interface{}{"bug", "crash"},
-		},
-		"jiraURL": "https://example.atlassian.net/jira/", // prevent nil or empty
-	}
+    monkey.Patch(common.IsProjectKeyValid, func(projectKey string) bool {
+        return true
+    })
 
-	resParams := graphql.ResolveParams{
-		Args: args,
-	}
+    monkey.Patch(models.CreateJiraIssue, func(jiraURL string, issue *jira.Issue) (string, error) {
+        return "JIRA-999", nil
+    })
 
-	// 🔍 Debug: ensure correct jiraURL value
-	fmt.Printf("Test input jiraURL: %#v\n", args["jiraURL"])
+    monkey.Patch(models.GetJiraURL, func(baseURL string, jiraID string) string {
+        return baseURL + "browse/" + jiraID
+    })
 
-	// Run mutation
-	result, err := mutation.CitiJiraFeedbackMutation.Resolve(resParams)
-	assert.NoError(t, err)
+    defer monkey.UnpatchAll()
 
-	// Assert
-	expected := models.JiraFeedbackResult{
-		JiraID:      "JIRA-123",
-		JiraURL:     "https://example.atlassian.net/jira/browse/JIRA-123",
-		ActionTaken: "New Jira Ticket created for the feedback",
-	}
-	actual, ok := result.(models.JiraFeedbackResult)
-	assert.True(t, ok)
-	assert.Equal(t, expected, actual)
+    args := map[string]interface{}{
+        "jiraURL": "https://example.atlassian.net/",
+        "input": map[string]interface{}{
+            "issueType":     "Bug",
+            "description":   "Test description",
+            "title":         "Test title",
+            "projectKey":    "TEST",
+            "labels":        []interface{}{"test-label"},
+            "reporter":      "john.doe",
+            "teamID":        "team-123",
+            "componentName": "UI",
+        },
+    }
+
+    params := graphql.ResolveParams{
+        Args: args,
+    }
+
+    result, err := CitiJiraFeedbackMutation.Resolve(params)
+    assert.NoError(t, err)
+
+    output, ok := result.(models.JiraFeedbackResult)
+    assert.True(t, ok, "Result should be JiraFeedbackResult")
+    assert.Equal(t, "JIRA-999", output.JiraID)
+    assert.Equal(t, "https://example.atlassian.net/browse/JIRA-999", output.JiraURL)
+    assert.Equal(t, "New Jira Ticket created for the feedback", output.ActionTaken)
 }
