@@ -1,26 +1,10 @@
-import (
-    "errors"
-    "testing"
-
-    "feedback/mutation"
-    "feedback/models"
-    "feedback/common"
-    "feedback/logger"
-
-    "github.com/graphql-go/graphql"
-    "github.com/stretchr/testify/assert"
-    "github.com/bouk/monkey"
-    "github.com/andygrunwald/go-jira"
-)
-
-
-
 func TestCitiJiraFeedbackMutation_Success(t *testing.T) {
     // Patch all the dependencies
     monkey.Patch(common.IsValidUser, func(params graphql.ResolveParams) bool {
         return true
     })
 
+    // FIXED: Changed signature to match original
     monkey.Patch(common.Sanitize, func(args map[string]interface{}) (map[string]interface{}, error) {
         return args, nil
     })
@@ -57,13 +41,13 @@ func TestCitiJiraFeedbackMutation_Success(t *testing.T) {
 
     input := map[string]interface{}{
         "input": map[string]interface{}{
-            "projectKey": "PROJ",
-            "title": "Bug found",
-            "description": "Something broke.",
-            "labels": []string{"bug"},
-            "issueType": "Bug",
+            "projectKey":    "PROJ",
+            "title":         "Bug found",
+            "description":   "Something broke.",
+            "labels":       []string{"bug"},
+            "issueType":     "Bug",
             "componentName": "UI",
-            "teamId": "team-123",
+            "teamId":        "team-123",
         },
         "jiraURL": "https://myjira.com",
     }
