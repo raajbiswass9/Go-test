@@ -1,94 +1,74 @@
-package mutation_test
+func TestCitiJiraFeedbackMutation_FallbackCreation(t *testing.T) {
+    defer monkey.UnpatchAll()
 
-import (
-	"fmt"
-	"runtime/debug"
-	"testing"
+    // ===== REQUIRED MOCKS =====
+    // 1. Authentication
+    testUser := "test-user@company.com"
+    monkey.Patch(common.GetUserName, func(p graphql.ResolveParams) string {
+        if val := p.Context.Value(models.ContextKeyUser); val != nil {
+            return val.(string)
+        }
+        return testUser
+    })
+    monkey.Patch(common.IsValidUser, func(_ graphql.ResolveParams) bool { return true })
+    monkey.Patch(common.IsInternalUser, func(_ graphql.ResolveParams) bool { return false })
 
-	"github.com/bouk/monkey"
-	"github.com/stretchr/testify/assert"
-	"github.com/your_project_path/common"
-	"github.com/your_project_path/config"
-	"github.com/your_project_path/models"
-	"github.com/your_project_path/mutation"
-	"github.com/your_project_path/schema"
-	"github.com/graphql-go/graphql"
-	"github.com/andygrunwald/go-jira"
-)
+    // 2. Config
+    monkey.PatchInstanceMethod(reflect.TypeOf(config.ConfigManager), "JiraUsername", 
+        func(_ *config.Config) string { return "fallback-user@company.com" })
 
-func TestCitiJiraFeedbackMutation_Success(t *testing.T) {
-	defer monkey.UnpatchAll()
+    // 3. Jira Operations
+    monkey.Patch(models.CreateJiraIssue, func(_ string, _ *jira.Issue) (string, error) {
+        return "", errors.New("initial failure") // First attempt fails
+    })
+    var fallbackIssue *jira.Issue
+    monkey.Patch(models.CreateJiraIssue, func(_ string, issue *jira.Issue) (string, error) {
+        fallbackIssue = issue // Capture for verification
+        return "FALLBACK-123", nil // Fallback succeeds
+    })
 
-	// Add recovery to identify panic cause
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("Test panicked: %v\n\nSTACK TRACE:\n%s", r, string(debug.Stack()))
-		}
-	}()
+    // 4. Validations
+    monkey.Patch(common.IsJiraURLValid, func(_ *string) bool { return true })
+    monkey.Patch(common.IsProjectKeyValid, func(_ string) bool { return true })
+    monkey.Patch(common.Sanitize, func(i interface{}) (interface{}, error) { return i, nil })
 
-	// Patch all dependencies
-	monkey.Patch(common.IsValidUser, func(_ graphql.ResolveParams) bool {
-		return true
-	})
+    // 5. Logger
+    var logMessages []string
+    monkey.Patch(logger.Log.Info, func(args ...interface{}) {
+        logMessages = append(logMessages, fmt.Sprint(args...))
+    })
 
-	monkey.Patch(common.Sanitize, func(input interface{}) (interface{}, error) {
-		return input, nil
-	})
+    // ===== TEST EXECUTION =====
+    ctx := context.WithValue(context.Background(), models.ContextKeyUser, testUser)
+    args := map[string]interface{}{
+        "input": map[string]interface{}{
+            "title":       "Fallback Test",
+            "description": "Test fallback creation",
+            "projectKey":  "FALL",
+            "issueType":   "Bug",
+            "reporter":    "original-user",
+        },
+        "jiraURL": "https://test.atlassian.net",
+    }
 
-	monkey.Patch(common.IsJiraURLValid, func(urlPtr *string) bool {
-		if urlPtr != nil && *urlPtr == "" {
-			*urlPtr = "https://valid.atlassian.net/jira/"
-		}
-		return true
-	})
+    result, err := mutation.CitiJiraFeedbackMutation.Resolve(graphql.ResolveParams{
+        Args:    args,
+        Context: ctx,
+    })
 
-	monkey.Patch(common.IsInternalUser, func(_ graphql.ResolveParams) bool {
-		return false
-	})
+    // ===== VERIFICATIONS =====
+    assert.NoError(t, err)
+    assert.NotNil(t, result)
+    assert.Contains(t, logMessages, "Into the fallback")
+    
+    // Verify fallback issue properties
+    require.NotNil(t, fallbackIssue)
+    assert.Equal(t, "fallback-user@company.com", fallbackIssue.Fields.Reporter.Name)
+    assert.Equal(t, "Test fallback creation", fallbackIssue.Fields.Description)
+    assert.Equal(t, "FALL", fallbackIssue.Fields.Project.Key)
 
-	monkey.Patch(common.GetUserName, func(_ graphql.ResolveParams) string {
-		return "test-reporter"
-	})
-
-	monkey.Patch(common.IsProjectKeyValid, func(_ string) bool {
-		return true
-	})
-
-	monkey.Patch(models.CreateJiraIssue, func(_ string, _ *jira.Issue) (string, error) {
-		return "JIRA-123", nil
-	})
-
-	monkey.Patch(models.GetJiraURL, func(baseURL string, jiraID string) string {
-		return fmt.Sprintf("%s/browse/%s", baseURL, jiraID)
-	})
-
-	// Input data
-	input := map[string]interface{}{
-		"title":         "Bug in app",
-		"description":   "App crashes on login",
-		"projectKey":    "PRJ",
-		"issueType":     "Bug",
-		"reporter":      "original-reporter",
-		"componentName": "LoginModule",
-		"teamID":        "Team-42", // NOTE: Was previously "teamId", fixed to "teamID"
-		"labels":        []interface{}{"crash", "login"},
-	}
-
-	args := map[string]interface{}{
-		"input":   input,
-		"jiraURL": "",
-	}
-
-	// Run the mutation
-	result, err := mutation.CitiJiraFeedbackMutation.Resolve(graphql.ResolveParams{
-		Args: args,
-	})
-
-	// Assertions
-	assert.NoError(t, err)
-	feedbackResult, ok := result.(models.JiraFeedbackResult)
-	assert.True(t, ok, "Result should be of type JiraFeedbackResult")
-	assert.Equal(t, "JIRA-123", feedbackResult.JiraID)
-	assert.Equal(t, "https://valid.atlassian.net/jira/browse/JIRA-123", feedbackResult.JiraURL)
-	assert.Equal(t, "New Jira Ticket created for the feedback", feedbackResult.ActionTaken)
+    // Verify final result
+    feedbackResult := result.(models.JiraFeedbackResult)
+    assert.Equal(t, "FALLBACK-123", feedbackResult.JiraID)
+    assert.Contains(t, feedbackResult.JiraURL, "FALLBACK-123")
 }
